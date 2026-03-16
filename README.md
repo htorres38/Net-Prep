@@ -2,8 +2,6 @@
 
 A study app for the Cisco CCNA certification.
 
-Net Prep is built around interactive lessons, CLI-based labs, and practice exams.
-
 > Currently in active development.
 
 ---
