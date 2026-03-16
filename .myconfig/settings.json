@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(grep -n \"id: ''layer2-loops''\" /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/src/data/ccna-curriculum.ts)",
+      "Bash(md5 /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/src/data/ccna-curriculum.ts)",
+      "Bash(grep -n \"id: ''dhcp-fundamentals''\\\\|id: ''dns-fundamentals''\\\\|id: ''nat-fundamentals''\\\\|id: ''ntp-fundamentals''\\\\|id: ''syslog-fundamentals''\\\\|id: ''snmp-fundamentals''\\\\|id: ''qos-basics''\\\\|id: ''cdp-lldp''\\\\|id: ''acl-fundamentals''\\\\|id: ''standard-acls''\\\\|id: ''extended-acls''\\\\|id: ''port-security''\\\\|id: ''wireless-fundamentals''\\\\|id: ''wireless-architecture''\\\\|id: ''wireless-security''\\\\|id: ''network-automation-overview''\\\\|id: ''json-xml-yaml''\\\\|id: ''rest-apis-programmability''\\\\|id: ''config-management-tools''\" /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/src/data/ccna-curriculum.ts)",
+      "Bash(grep -n \"id: ''network-broadcast-host-range''\" /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/src/data/ccna-curriculum.ts)",
+      "Bash(grep -n \"id: ''ospf-cost-best-path''\" /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/src/data/ccna-curriculum.ts)",
+      "Bash(grep -n \"id: ''what-routers-do''\\\\|id: ''router-interfaces-l3-forwarding''\\\\|id: ''routing-tables''\\\\|id: ''connected-and-local-routes''\\\\|id: ''static-routes''\\\\|id: ''default-routes''\\\\|id: ''administrative-distance''\\\\|id: ''packet-walkthrough-remote-network''\\\\|id: ''vlan-fundamentals''\\\\|id: ''access-vs-trunk-ports''\\\\|id: ''802-1q-trunking''\\\\|id: ''inter-vlan-routing''\\\\|id: ''router-on-a-stick''\\\\|id: ''l3-switches-svis''\" /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/src/data/ccna-curriculum.ts)",
+      "Bash(python3 -:*)",
+      "Bash(python3 /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/src/data/replace_skeletons.py)",
+      "Bash(sort -t'\\(' -k2 -n)",
+      "Read(//Users/hayleetorres/Desktop/Projects/Network-Study-App/code/**)",
+      "Bash(git -C /Users/hayleetorres/Desktop/Projects/Network-Study-App/code diff HEAD -- src/data/ccna-curriculum.ts)"
+    ]
+  }
+}

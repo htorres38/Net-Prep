@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(xxd /Users/hayleetorres/Desktop/Projects/Network-Study-App/code/inputs/module01/lesson01.md)"
+    ]
+  }
+}
