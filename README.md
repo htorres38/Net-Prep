@@ -1,5 +1,7 @@
 # Net Prep
 
+**Live preview:** https://prep-net.vercel.app/
+
 A local-first CCNA certification study app with an AI tutor, built with PowerSync for offline-capable progress sync.
 
 ---
