@@ -9,6 +9,7 @@ export const powerSyncDb = new PowerSyncDatabase({
     flags: {
       disableSSRWarning: true,
       useWebWorker: false,
+      enableMultiTabs: false,
     },
   },
 })
