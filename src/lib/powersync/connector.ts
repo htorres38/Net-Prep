@@ -23,7 +23,8 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
 
     try {
       // -- NEON (active) --
-      const sql = neon(process.env.NEON_DATABASE_URL!)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sql = neon(process.env.NEON_DATABASE_URL!) as any
       for (const op of batch.crud) {
         const { table, id, opData } = op
         if (op.op === UpdateType.PUT) {
