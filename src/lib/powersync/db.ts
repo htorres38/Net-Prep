@@ -4,7 +4,13 @@ import { SupabaseConnector } from './connector'
 
 export const powerSyncDb = new PowerSyncDatabase({
   schema: AppSchema,
-  database: { dbFilename: 'prepnet.db' },
+  database: {
+    dbFilename: 'prepnet.db',
+    flags: {
+      disableSSRWarning: true,
+      useWebWorker: false,
+    },
+  },
 })
 
 export const connector = new SupabaseConnector()
