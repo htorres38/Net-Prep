@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, ReactNode } from 'react'
 import { PowerSyncContext } from '@powersync/react'
 import { supabase } from '@/lib/supabase'
+import { setPowerSyncDb } from '@/lib/powersync/db'
 
 export function PowerSyncProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<any>(null)
@@ -11,6 +12,7 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     import('@/lib/powersync/db').then(async ({ createPowerSyncDb }) => {
       const powerSyncDb = await createPowerSyncDb()
+      setPowerSyncDb(powerSyncDb)
       console.log('[PowerSync] initial status:', powerSyncDb.currentStatus)
       ;(powerSyncDb as any).statusStream?.subscribe((status: any) => {
         console.log('[PowerSync] status changed — connected:', status.connected, '| last sync:', status.lastSyncedAt ?? 'never')
