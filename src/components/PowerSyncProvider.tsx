@@ -11,6 +11,7 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     import('@/lib/powersync/db').then(async ({ createPowerSyncDb }) => {
       const powerSyncDb = await createPowerSyncDb()
+      console.log('[PowerSync] status:', powerSyncDb.currentStatus)
       dbRef.current = powerSyncDb
       setDb(powerSyncDb)
     }).catch(console.error)

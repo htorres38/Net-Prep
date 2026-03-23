@@ -8,11 +8,15 @@ function dbWarn(label: string, err: unknown): void {
 
 async function dbPost(action: string, params: Record<string, unknown>): Promise<void> {
   try {
-    await fetch('/api/db', {
+    const res = await fetch('/api/db', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ...params }),
     })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      dbWarn(action, body.error ?? res.status)
+    }
   } catch (e) {
     dbWarn(action, e)
   }
@@ -30,7 +34,7 @@ export async function getUserId(): Promise<string> {
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user?.id) {
       _resolvedUserId = session.user.id
-      dbPost('upsert_user', { userId: _resolvedUserId })
+      await dbPost('upsert_user', { userId: _resolvedUserId })
       return _resolvedUserId
     }
   } catch { /* network unavailable or SSR */ }
@@ -56,7 +60,10 @@ async function _resolveUserId(): Promise<string> {
   try {
     const { localDB } = await import('./localdb')
     const stored = await localDB.meta.get('userId')
-    if (stored?.value) return stored.value
+    if (stored?.value) {
+      await dbPost('upsert_user', { userId: stored.value })
+      return stored.value
+    }
   } catch { /* SSR or storage blocked */ }
 
   const id = crypto.randomUUID()
@@ -65,7 +72,7 @@ async function _resolveUserId(): Promise<string> {
     await localDB.meta.put({ key: 'userId', value: id })
   } catch { /* ignore */ }
 
-  dbPost('upsert_user', { userId: id })
+  await dbPost('upsert_user', { userId: id })
   return id
 }
 

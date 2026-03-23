@@ -35,7 +35,18 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('[db api]', err)
-    return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[db api]', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    await sql`SELECT 1`
+    return NextResponse.json({ ok: true, url: process.env.NEON_DATABASE_URL ? 'set' : 'MISSING' })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ ok: false, error: msg, url: process.env.NEON_DATABASE_URL ? 'set' : 'MISSING' }, { status: 500 })
   }
 }
