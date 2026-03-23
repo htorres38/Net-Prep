@@ -1,0 +1,645 @@
+'use client'
+
+import { setLabCompletion, getLabCompletion } from '@/lib/progress'
+
+import { useState, useCallback, useRef, useEffect } from 'react'
+import Link from 'next/link'
+import {
+  ChevronLeft, Lightbulb, Eye, RotateCcw, Trophy,
+  Check, X, Star, Clock, BookOpen,
+  Zap, ChevronDown, ChevronUp, Terminal,
+  AlertCircle, CornerDownRight, Table2,
+} from 'lucide-react'
+import {
+  QUESTIONS, ROUTING_TABLE, TOPO_HIGHLIGHTS,
+  LAB07_META, LAB07_SCENARIO, LAB07_COMPLETION,
+  type Question, type MCQuestion, type SequencingQuestion, type CLIQuestion,
+} from '@/data/lab07Data'
+
+// types
+const isMC  = (q: Question): q is MCQuestion         => q.type !== 'sequencing' && q.type !== 'cli-input'
+const isSeq = (q: Question): q is SequencingQuestion => q.type === 'sequencing'
+const isCLI = (q: Question): q is CLIQuestion        => q.type === 'cli-input'
+
+// constants
+const TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  'multiple-choice':      { label: 'Multiple Choice',      color: 'bg-blue-100 text-blue-700' },
+  'topology-reasoning':   { label: 'Topology Reasoning',   color: 'bg-indigo-100 text-indigo-700' },
+  'troubleshooting':      { label: 'Troubleshooting',      color: 'bg-rose-100 text-rose-700' },
+  'scenario-analysis':    { label: 'Scenario Analysis',    color: 'bg-violet-100 text-violet-700' },
+  'output-interpretation':{ label: 'Output Interpretation',color: 'bg-cyan-100 text-cyan-700' },
+  'sequencing':           { label: 'Sequencing',           color: 'bg-purple-100 text-purple-700' },
+  'cli-input':            { label: 'CLI Input',            color: 'bg-gray-800 text-green-400' },
+}
+
+const SEQ_COLORS: Record<string, string> = {
+  'Receive the incoming packet':                  'bg-blue-100 text-blue-700 border-blue-200',
+  'Examine the destination IP address':           'bg-indigo-100 text-indigo-700 border-indigo-200',
+  'Look up the destination in the routing table': 'bg-purple-100 text-purple-700 border-purple-200',
+  'Forward the packet out the correct interface': 'bg-green-100 text-green-700 border-green-200',
+}
+
+// state
+interface QState {
+  selected: string | null
+  cliInput: string
+  seqOrder: string[]
+  submitted: boolean
+  isCorrect: boolean | null
+  hintLevel: number
+  revealed: boolean
+}
+
+function makeState(q: Question): QState {
+  return {
+    selected: null,
+    cliInput: '',
+    seqOrder: isSeq(q) ? [...q.shuffledItems] : [],
+    submitted: false,
+    isCorrect: null,
+    hintLevel: 0,
+    revealed: false,
+  }
+}
+
+// topology
+function TopologyCard({ highlightNodes }: { highlightNodes?: string[] }) {
+  const hi = new Set(highlightNodes ?? [])
+
+  const nodeClass = (name: string, base: string) =>
+    hi.has(name)
+      ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-300 scale-105 shadow-md'
+      : base
+
+  const Node = ({
+    name, emoji, ip, label, baseClass,
+  }: { name: string; emoji: string; ip?: string; label?: string; baseClass: string }) => (
+    <div className={`flex flex-col items-center px-2.5 py-2 rounded-xl border-2 transition-all duration-300 min-w-[80px] ${nodeClass(name, baseClass)}`}>
+      <span className="text-lg">{emoji}</span>
+      <span className="text-xs font-bold text-gray-800">{name}</span>
+      {ip    && <span className="text-xs font-mono text-gray-600">{ip}</span>}
+      {label && <span className="text-xs text-gray-400">{label}</span>}
+    </div>
+  )
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Table2 className="w-4 h-4 text-indigo-600" />
+          <span className="font-semibold text-gray-800 text-sm">Network Topology</span>
+        </div>
+        <span className="text-xs text-gray-400">Two-network setup</span>
+      </div>
+
+      {/* Two-column layout: PC-A on left, PC-B on right */}
+      <div className="flex justify-between gap-4 w-full">
+        {/* Left side — PC-A / 192.168.1.x */}
+        <div className="flex flex-col items-center gap-0 flex-1">
+          <Node name="PC-A" emoji="💻" ip="192.168.1.10" label="/24" baseClass="bg-blue-50 border-blue-200" />
+          <div className="w-px h-5 bg-blue-300" />
+          <div className="text-xs font-mono text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">G0/0: 192.168.1.1</div>
+          <div className="w-px h-3 bg-indigo-300" />
+        </div>
+
+        {/* Right side — PC-B / 192.168.2.x */}
+        <div className="flex flex-col items-center gap-0 flex-1">
+          <Node name="PC-B" emoji="🖥️" ip="192.168.2.20" label="/24" baseClass="bg-purple-50 border-purple-200" />
+          <div className="w-px h-5 bg-purple-300" />
+          <div className="text-xs font-mono text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5">G0/1: 192.168.2.1</div>
+          <div className="w-px h-3 bg-indigo-300" />
+        </div>
+      </div>
+
+      {/* Router centered */}
+      <div className="flex justify-center mt-0">
+        <Node name="Router" emoji="🌐" baseClass="bg-indigo-50 border-indigo-200" />
+      </div>
+
+      {/* Legend */}
+      <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-1.5 text-center">
+        <div className="rounded-lg px-2 py-1.5 bg-blue-50 text-blue-700">
+          <span className="text-xs font-semibold">192.168.1.0/24</span>
+          <p className="text-xs opacity-70">PC-A network</p>
+        </div>
+        <div className="rounded-lg px-2 py-1.5 bg-purple-50 text-purple-700">
+          <span className="text-xs font-semibold">192.168.2.0/24</span>
+          <p className="text-xs opacity-70">PC-B network</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// routing table
+function RoutingTablePanel() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-card overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between p-4 text-left">
+        <div className="flex items-center gap-2">
+          <Table2 className="w-4 h-4 text-indigo-600" />
+          <span className="font-semibold text-gray-800 text-sm">Routing Table</span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <div className="rounded-xl overflow-hidden border border-indigo-100">
+            <table className="w-full text-xs">
+              <thead className="bg-indigo-50">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold text-indigo-700">Code</th>
+                  <th className="text-left px-3 py-2 font-semibold text-indigo-700">Network</th>
+                  <th className="text-left px-3 py-2 font-semibold text-indigo-700">Interface</th>
+                  <th className="text-left px-3 py-2 font-semibold text-indigo-700">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ROUTING_TABLE.map((row, i) => (
+                  <tr key={i} className={row.code === 'C' ? 'bg-green-50' : 'bg-blue-50'}>
+                    <td className="px-3 py-2">
+                      <span className={`inline-flex items-center justify-center w-5 h-5 rounded font-bold text-xs ${row.code === 'C' ? 'bg-green-200 text-green-800' : 'bg-blue-200 text-blue-800'}`}>{row.code}</span>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-gray-800">{row.network}</td>
+                    <td className="px-3 py-2 font-mono text-gray-600">{row.interface}</td>
+                    <td className="px-3 py-2 text-gray-600">{row.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Legend */}
+          <div className="flex gap-3 text-xs">
+            <span className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center w-4 h-4 rounded bg-green-200 text-green-800 font-bold text-xs">C</span>= Connected</span>
+            <span className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center w-4 h-4 rounded bg-blue-200 text-blue-800 font-bold text-xs">L</span>= Local</span>
+            <span className="flex items-center gap-1.5"><span className="inline-flex items-center justify-center w-4 h-4 rounded bg-gray-200 text-gray-700 font-bold text-xs">S</span>= Static</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// scenario
+function ScenarioCard() {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl border border-indigo-100 shadow-card overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between p-4 text-left">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🔍</span>
+          <span className="font-semibold text-indigo-800">Mission Brief</span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-indigo-500" /> : <ChevronDown className="w-4 h-4 text-indigo-500" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-sm text-indigo-900">{LAB07_SCENARIO.context}</p>
+          <div>
+            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider mb-1.5">Issues reported:</p>
+            <ul className="space-y-1">
+              {LAB07_SCENARIO.reports.map(r => (
+                <li key={r} className="text-sm text-indigo-800 flex items-start gap-2">
+                  <span className="text-red-400 mt-0.5">!</span>{r}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="bg-white/70 rounded-xl p-3 border border-indigo-100">
+            <p className="text-sm text-indigo-900 font-medium">{LAB07_SCENARIO.challenge}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// header
+function LabHeaderCard({ progress }: { progress: number }) {
+  return (
+    <div className="bg-white rounded-2xl shadow-card border border-gray-100 p-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Lab 07</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+              <Star className="w-3 h-3 text-yellow-400" />{LAB07_META.difficulty}
+            </span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">{LAB07_META.title}</h1>
+          <div className="flex flex-wrap gap-4 mt-3">
+            <span className="flex items-center gap-1.5 text-sm text-gray-600"><Clock className="w-4 h-4 text-gray-400" />{LAB07_META.estimatedTime}</span>
+            <span className="flex items-center gap-1.5 text-sm text-gray-600"><BookOpen className="w-4 h-4 text-indigo-500" />{QUESTIONS.length} Questions</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 shrink-0 max-w-xs">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Skills Tested</p>
+          <ul className="space-y-1">
+            {LAB07_META.skillsTested.map(s => (
+              <li key={s} className="text-xs text-gray-600 flex items-start gap-1.5">
+                <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />{s}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="mt-5">
+        <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+          <span>Progress</span><span>{Math.round(progress)}%</span>
+        </div>
+        <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-400 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// badge
+function TypeBadge({ type }: { type: string }) {
+  const info = TYPE_LABELS[type] ?? { label: type, color: 'bg-gray-100 text-gray-600' }
+  return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${info.color}`}>{info.label}</span>
+}
+
+// mc options
+function MCOptions({ question, state, onSelect }: { question: MCQuestion; state: QState; onSelect: (k: string) => void }) {
+  return (
+    <div className="space-y-2.5">
+      {question.options.map(opt => {
+        const sel = state.selected === opt.key
+        const correct = opt.key === question.correctAnswer
+        let cls = 'border-gray-200 bg-white hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer'
+        if (state.submitted || state.revealed) {
+          cls = correct ? 'border-green-400 bg-green-50 cursor-default'
+            : sel ? 'border-red-300 bg-red-50 cursor-default'
+            : 'border-gray-200 bg-gray-50 opacity-60 cursor-default'
+        } else if (sel) cls = 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200 cursor-pointer'
+        return (
+          <button key={opt.key} onClick={() => !state.submitted && !state.revealed && onSelect(opt.key)}
+            disabled={state.submitted || state.revealed}
+            className={`w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left ${cls}`}>
+            <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 ${
+              state.submitted || state.revealed
+                ? correct ? 'bg-green-500 text-white' : sel ? 'bg-red-400 text-white' : 'bg-gray-200 text-gray-500'
+                : sel ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}>{opt.key}</span>
+            <span className="text-sm text-gray-800 font-medium flex-1">{opt.text}</span>
+            {(state.submitted || state.revealed) && (correct ? <Check className="w-5 h-5 text-green-500 shrink-0" /> : sel ? <X className="w-5 h-5 text-red-400 shrink-0" /> : null)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// seq options
+function SeqOptions({ question, state, onReorder }: { question: SequencingQuestion; state: QState; onReorder: (order: string[]) => void }) {
+  const moveUp = (i: number) => {
+    if (i === 0 || state.submitted || state.revealed) return
+    const next = [...state.seqOrder]
+    ;[next[i - 1], next[i]] = [next[i], next[i - 1]]
+    onReorder(next)
+  }
+  const moveDown = (i: number) => {
+    if (i === state.seqOrder.length - 1 || state.submitted || state.revealed) return
+    const next = [...state.seqOrder]
+    ;[next[i], next[i + 1]] = [next[i + 1], next[i]]
+    onReorder(next)
+  }
+
+  return (
+    <div className="space-y-2">
+      {state.seqOrder.map((item, i) => {
+        const correct = state.submitted || state.revealed ? item === question.correctOrder[i] : null
+        const colorClass = SEQ_COLORS[item] ?? 'bg-gray-100 text-gray-700 border-gray-200'
+        return (
+          <div key={item} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+            state.submitted || state.revealed
+              ? correct ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'
+              : `${colorClass}`
+          }`}>
+            <span className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center text-xs font-bold shrink-0">{i + 1}</span>
+            <span className="text-sm font-medium flex-1">{item}</span>
+            {!(state.submitted || state.revealed) && (
+              <div className="flex flex-col gap-0.5 shrink-0">
+                <button onClick={() => moveUp(i)} disabled={i === 0} className="p-0.5 rounded hover:bg-white/60 disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
+                <button onClick={() => moveDown(i)} disabled={i === state.seqOrder.length - 1} className="p-0.5 rounded hover:bg-white/60 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
+            {(state.submitted || state.revealed) && (correct ? <Check className="w-4 h-4 text-green-500 shrink-0" /> : <X className="w-4 h-4 text-red-400 shrink-0" />)}
+          </div>
+        )
+      })}
+      {(state.submitted || state.revealed) && (
+        <div className="mt-2 space-y-1">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Correct order:</p>
+          {question.correctOrder.map((item, i) => (
+            <div key={item} className="flex items-center gap-2 text-xs text-gray-600">
+              <span className="font-bold text-indigo-600">{i + 1}.</span>{item}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// cli input
+function CLIInput({ question, state, onChange }: { question: CLIQuestion; state: QState; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (!state.submitted && !state.revealed) ref.current?.focus() }, [state.submitted, state.revealed])
+  const ok = state.isCorrect
+  const border = state.submitted || state.revealed ? ok ? 'border-green-500' : 'border-red-500' : 'border-gray-600'
+  return (
+    <div className={`rounded-xl overflow-hidden border-2 transition-colors ${border}`}>
+      <div className="bg-gray-800 px-4 py-2 flex items-center gap-2">
+        <div className="flex gap-1.5"><span className="w-3 h-3 rounded-full bg-red-500" /><span className="w-3 h-3 rounded-full bg-yellow-400" /><span className="w-3 h-3 rounded-full bg-green-500" /></div>
+        <Terminal className="w-3.5 h-3.5 text-gray-400 ml-2" />
+        <span className="text-xs text-gray-400 font-mono">cli input</span>
+        {(state.submitted || state.revealed) && <div className="ml-auto">{ok ? <span className="text-xs font-semibold text-green-400 flex items-center gap-1"><Check className="w-3 h-3" /> Correct</span> : <span className="text-xs font-semibold text-red-400 flex items-center gap-1"><X className="w-3 h-3" /> Incorrect</span>}</div>}
+      </div>
+      <div className="bg-gray-900 p-4">
+        <div className="flex items-center gap-2 font-mono text-sm">
+          <span className="text-green-400 shrink-0 select-none">{question.terminalPrompt}</span>
+          {state.submitted || state.revealed
+            ? <span className={`flex-1 ${ok ? 'text-green-300' : 'text-red-300'}`}>{state.cliInput || <span className="italic text-gray-500">no input</span>}</span>
+            : <input ref={ref} type="text" value={state.cliInput} onChange={e => onChange(e.target.value)} placeholder="type your command..." className="flex-1 bg-transparent text-green-300 placeholder-gray-600 outline-none caret-green-400" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} />}
+        </div>
+        {(state.submitted || state.revealed) && !ok && (
+          <div className="mt-3 pt-3 border-t border-gray-700 flex items-center gap-2 font-mono text-sm">
+            <CornerDownRight className="w-3.5 h-3.5 text-gray-500" />
+            <span className="text-xs text-gray-400">expected:</span>
+            <span className="text-yellow-300">{question.expectedAnswer}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// hint
+function HintPanel({ hints, hintLevel, onNext }: { hints: string[]; hintLevel: number; onNext: () => void }) {
+  if (!hintLevel) return null
+  return (
+    <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 space-y-2">
+      <div className="flex items-center gap-2 mb-1"><Lightbulb className="w-4 h-4 text-amber-500" /><span className="text-sm font-semibold text-amber-700">Hint {hintLevel} of {hints.length}</span></div>
+      {hints.slice(0, hintLevel).map((h, i) => <div key={i} className={`text-sm text-amber-800 flex gap-2 ${i < hintLevel - 1 ? 'opacity-60' : ''}`}><span className="text-amber-400 shrink-0">→</span>{h}</div>)}
+      {hintLevel < hints.length && <button onClick={onNext} className="text-xs font-semibold text-amber-600 hover:text-amber-700 underline underline-offset-2">Show next hint →</button>}
+    </div>
+  )
+}
+
+// feedback
+function Feedback({ isCorrect, explanation, revealed }: { isCorrect: boolean; explanation: string; revealed: boolean }) {
+  if (isCorrect) return (
+    <div className="rounded-xl bg-green-50 border border-green-200 p-4 celebrate-bounce">
+      <div className="flex items-center gap-2 mb-2"><span className="text-xl">🎉</span><span className="font-semibold text-green-700">Nice work!</span></div>
+      <p className="text-sm text-green-800 leading-relaxed">{explanation}</p>
+    </div>
+  )
+  return (
+    <div className={`rounded-xl border p-4 ${revealed ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+      <div className="flex items-center gap-2 mb-2"><span className="text-xl">{revealed ? '📖' : '💡'}</span><span className={`font-semibold ${revealed ? 'text-blue-700' : 'text-red-700'}`}>{revealed ? 'Here is the answer' : 'Not quite — try again or reveal'}</span></div>
+      <p className={`text-sm leading-relaxed ${revealed ? 'text-blue-800' : 'text-red-800'}`}>{explanation}</p>
+    </div>
+  )
+}
+
+// completion
+function CompletionModal({ score, total, onRetry }: { score: number; total: number; onRetry: () => void }) {
+  const pct = Math.round((score / total) * 100)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-md overflow-hidden celebrate-bounce">
+        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-center">
+          <div className="text-5xl mb-2">🏆</div>
+          <h2 className="text-2xl font-bold text-white">Lab Complete!</h2>
+          <p className="text-indigo-100 text-sm mt-1">{LAB07_META.title}</p>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-green-50 rounded-2xl p-4 text-center border border-green-100">
+              <p className="text-3xl font-bold text-green-600">{score}/{total}</p>
+              <p className="text-xs text-green-500 font-medium mt-0.5">Correct</p>
+            </div>
+            <div className="bg-green-50 rounded-2xl p-4 text-center border border-green-100">
+              <p className="text-3xl font-bold text-green-600">{pct}%</p>
+              <p className="text-xs text-green-500 font-medium mt-0.5">Accuracy</p>
+            </div>
+          </div>
+          <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
+            <div className="flex items-center gap-2 mb-2"><Trophy className="w-4 h-4 text-indigo-600" /><span className="text-sm font-semibold text-indigo-700">Concept Mastered</span></div>
+            <p className="text-sm font-bold text-indigo-800">{LAB07_COMPLETION.conceptMastered}</p>
+            <ul className="mt-2 space-y-1">{LAB07_COMPLETION.masteredPoints.map(p => (
+              <li key={p} className="text-xs text-indigo-700 flex items-start gap-1.5"><span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />{p}</li>
+            ))}</ul>
+          </div>
+          {pct < 80 && (
+            <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100">
+              <div className="flex items-center gap-2 mb-2"><BookOpen className="w-4 h-4 text-amber-600" /><span className="text-sm font-semibold text-amber-700">Review If Needed</span></div>
+              <ul className="space-y-1">{LAB07_COMPLETION.reviewIfNeeded.map(l => (
+                <li key={l.id} className="text-xs text-amber-800 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />Lesson {l.id}: {l.title}</li>
+              ))}</ul>
+            </div>
+          )}
+          <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Next Suggested Lab</p>
+            <p className="text-sm font-semibold text-gray-800">{LAB07_COMPLETION.nextLab.title}</p>
+            <span className="text-xs text-gray-400">Coming soon</span>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onRetry} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-all"><RotateCcw className="w-4 h-4" />Retry Lab</button>
+            <Link href="/labs" className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-all">Back to Labs</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// page
+export default function Lab07Page() {
+  const total = QUESTIONS.length
+  const [currentIdx, setCurrentIdx] = useState(0)
+  const [qState, setQState] = useState<QState>(() => makeState(QUESTIONS[0]))
+  const [score, setScore] = useState(0)
+  const [correctSet, setCorrectSet] = useState<Set<number>>(new Set())
+  const [showCompletion, setShowCompletion] = useState(false)
+
+  const currentQ = QUESTIONS[currentIdx]
+  const progress = (currentIdx / total) * 100
+
+  const resetTo = useCallback((idx: number) => {
+    setCurrentIdx(idx)
+    setQState(makeState(QUESTIONS[idx]))
+  }, [])
+
+  const checkAnswer = useCallback(() => {
+    const q = currentQ
+    let correct = false
+    if (isCLI(q))      correct = q.acceptedAnswers.some(a => a.toLowerCase() === qState.cliInput.trim().toLowerCase())
+    else if (isSeq(q)) correct = qState.seqOrder.every((item, i) => item === q.correctOrder[i])
+    else if (isMC(q))  correct = qState.selected === q.correctAnswer
+
+    setQState(s => ({ ...s, submitted: true, isCorrect: correct }))
+    if (correct && !correctSet.has(q.id)) {
+      setCorrectSet(p => new Set(Array.from(p).concat(q.id)))
+      setScore(s => s + 1)
+    }
+  }, [currentQ, qState, correctSet])
+
+  const handleRetry = useCallback(() =>
+    setQState(s => ({ ...s, submitted: false, isCorrect: null, selected: null, cliInput: '' }))
+  , [])
+
+  const handleReveal = useCallback(() =>
+    setQState(s => ({ ...s, submitted: true, revealed: true, isCorrect: false }))
+  , [])
+
+  const handleContinue = useCallback(() => {
+    if (currentIdx + 1 >= total) {
+      setLabCompletion('lab07', score, total)
+      setShowCompletion(true)
+    } else {
+      resetTo(currentIdx + 1)
+    }
+  }, [currentIdx, total, resetTo, score])
+
+  const handleLabRetry = useCallback(() => {
+    setScore(0); setCorrectSet(new Set()); setShowCompletion(false); resetTo(0)
+  }, [resetTo])
+
+  const canCheck = isCLI(currentQ)
+    ? qState.cliInput.trim().length > 0
+    : isSeq(currentQ)
+    ? true
+    : qState.selected !== null
+
+  const rawHi = TOPO_HIGHLIGHTS[currentQ.id]
+  const topoHi = rawHi && (qState.isCorrect || qState.revealed) ? rawHi : []
+
+  const isTopoQ   = currentQ.type === 'topology-reasoning'
+  const isOutputQ = currentQ.type === 'output-interpretation'
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {showCompletion && <CompletionModal score={score} total={total} onRetry={handleLabRetry} />}
+
+      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-100 px-4 py-3">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <Link href="/labs" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"><ChevronLeft className="w-4 h-4" />Labs</Link>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600">Question {currentIdx + 1} of {total}</span>
+            <div className="hidden sm:flex items-center gap-1">
+              {QUESTIONS.map((q, i) => (
+                <div key={q.id} className={`w-2 h-2 rounded-full transition-all ${correctSet.has(q.id) ? 'bg-indigo-400' : i === currentIdx ? 'bg-indigo-500 scale-125' : i < currentIdx ? 'bg-gray-300' : 'bg-gray-200'}`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        <LabHeaderCard progress={progress} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1 space-y-4">
+            <ScenarioCard />
+            <TopologyCard highlightNodes={topoHi.length ? topoHi : undefined} />
+            <RoutingTablePanel />
+          </div>
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-white rounded-2xl shadow-card border border-gray-100 p-6 section-enter">
+              <div className="flex items-start justify-between gap-3 mb-5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <TypeBadge type={currentQ.type} />
+                  {isTopoQ   && <span className="text-xs text-indigo-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" />Refer to topology</span>}
+                  {isOutputQ && <span className="text-xs text-cyan-600 flex items-center gap-1"><Table2 className="w-3 h-3" />Refer to routing table panel</span>}
+                  {isCLI(currentQ) && <span className="text-xs text-green-600 flex items-center gap-1"><Terminal className="w-3 h-3" />Type your command</span>}
+                </div>
+                <span className="text-sm font-semibold text-gray-400 shrink-0">Q{currentIdx + 1}/{total}</span>
+              </div>
+              <p className="text-lg font-semibold text-gray-900 leading-snug mb-5 whitespace-pre-line">{currentQ.prompt}</p>
+
+              {isMC(currentQ) && (
+                <MCOptions question={currentQ} state={qState} onSelect={k => setQState(s => ({ ...s, selected: k }))} />
+              )}
+              {isSeq(currentQ) && (
+                <SeqOptions
+                  question={currentQ}
+                  state={qState}
+                  onReorder={order => setQState(s => ({ ...s, seqOrder: order }))}
+                />
+              )}
+              {isCLI(currentQ) && (
+                <CLIInput question={currentQ} state={qState} onChange={v => setQState(s => ({ ...s, cliInput: v }))} />
+              )}
+            </div>
+
+            {qState.hintLevel > 0 && (
+              <HintPanel
+                hints={currentQ.hints}
+                hintLevel={qState.hintLevel}
+                onNext={() => setQState(s => ({ ...s, hintLevel: Math.min(s.hintLevel + 1, currentQ.hints.length) }))}
+              />
+            )}
+            {qState.submitted && qState.isCorrect !== null && (
+              <Feedback isCorrect={qState.isCorrect} explanation={currentQ.explanation} revealed={qState.revealed} />
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              {!qState.submitted && qState.hintLevel < currentQ.hints.length && (
+                <button onClick={() => setQState(s => ({ ...s, hintLevel: s.hintLevel + 1 }))} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-amber-200 bg-amber-50 text-amber-700 font-semibold text-sm hover:bg-amber-100 transition-all">
+                  <Lightbulb className="w-4 h-4" />{qState.hintLevel === 0 ? 'Hint' : 'Next hint'}
+                </button>
+              )}
+              {!qState.submitted && !qState.revealed && (
+                <button onClick={handleReveal} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-gray-200 bg-white text-gray-600 font-semibold text-sm hover:bg-gray-50 transition-all">
+                  <Eye className="w-4 h-4" />Reveal Answer
+                </button>
+              )}
+              {!qState.submitted && !qState.revealed && (
+                <button onClick={checkAnswer} disabled={!canCheck} className={`ml-auto flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all ${canCheck ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+                  Check Answer
+                </button>
+              )}
+              {qState.submitted && qState.isCorrect === false && !qState.revealed && (
+                <>
+                  <button onClick={handleRetry} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-gray-200 bg-white text-gray-600 font-semibold text-sm hover:bg-gray-50 transition-all"><RotateCcw className="w-4 h-4" />Try Again</button>
+                  <button onClick={handleReveal} className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-gray-200 bg-white text-gray-600 font-semibold text-sm hover:bg-gray-50 transition-all"><Eye className="w-4 h-4" />Reveal Answer</button>
+                </>
+              )}
+              {qState.submitted && (qState.isCorrect === true || qState.revealed) && (
+                <button onClick={handleContinue} className="ml-auto flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md transition-all">
+                  {currentIdx + 1 >= total ? 'Finish Lab' : 'Continue'}<ChevronLeft className="w-4 h-4 rotate-180" />
+                </button>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-gray-600">Progress</span>
+                <span className="text-sm font-bold text-indigo-600">{score} correct</span>
+              </div>
+              <div className="flex gap-1">
+                {QUESTIONS.map((q, i) => (
+                  <div key={q.id} title={`Q${i + 1}`} className={`flex-1 h-2.5 rounded-full transition-all ${correctSet.has(q.id) ? 'bg-indigo-400' : i === currentIdx ? 'bg-indigo-400 opacity-60' : i < currentIdx ? 'bg-gray-300' : 'bg-gray-100'}`} />
+                ))}
+              </div>
+              <div className="flex justify-between mt-1.5"><span className="text-xs text-gray-400">Q1</span><span className="text-xs text-gray-400">Q{total}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-card p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Lessons Reinforced</p>
+          <div className="flex flex-wrap gap-2">
+            {LAB07_META.lessonsReinforced.map(l => (
+              <span key={l.id} className="text-xs font-medium text-gray-600 bg-gray-100 rounded-lg px-3 py-1.5">Lesson {l.id}: {l.title}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

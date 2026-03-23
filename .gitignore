@@ -1,9 +1,10 @@
 inputs/
-Labs/
+/Labs/
 node_modules/
 /.pnp
 .pnp.js
 
+lab_structure/
 /coverage
 
 /.next/
