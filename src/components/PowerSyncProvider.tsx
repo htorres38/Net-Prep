@@ -1,28 +1,33 @@
 'use client'
 
-import { useEffect, useState, ReactNode } from 'react'
+import { useEffect, useState, useRef, ReactNode } from 'react'
 import { PowerSyncContext } from '@powersync/react'
-import { powerSyncDb, connector, initPowerSync } from '@/lib/powersync/db'
 import { supabase } from '@/lib/supabase'
 
 export function PowerSyncProvider({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false)
+  const [db, setDb] = useState<any>(null)
+  const dbRef = useRef<any>(null)
 
   useEffect(() => {
-    initPowerSync().then(() => setReady(true)).catch(console.error)
+    import('@/lib/powersync/db').then(async ({ createPowerSyncDb }) => {
+      const powerSyncDb = await createPowerSyncDb()
+      dbRef.current = powerSyncDb
+      setDb(powerSyncDb)
+    }).catch(console.error)
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN') powerSyncDb.connect(connector).catch(() => {})
-      if (event === 'SIGNED_OUT') powerSyncDb.disconnect().catch(() => {})
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
+      const { connector } = await import('@/lib/powersync/db')
+      if (event === 'SIGNED_IN') dbRef.current?.connect(connector).catch(() => {})
+      if (event === 'SIGNED_OUT') dbRef.current?.disconnect().catch(() => {})
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  if (!ready) return <>{children}</>
+  if (!db) return <>{children}</>
 
   return (
-    <PowerSyncContext.Provider value={powerSyncDb}>
+    <PowerSyncContext.Provider value={db}>
       {children}
     </PowerSyncContext.Provider>
   )
