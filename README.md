@@ -22,7 +22,7 @@ A study app for the Cisco CCNA certification.
 | Framework | Next.js |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
-| Database | SQLite *(in progress)* |
+| Database | Postgres |
 
 ---
 
