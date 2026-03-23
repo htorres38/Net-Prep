@@ -11,15 +11,7 @@ const nextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.experiments = {
-        ...config.experiments,
-        asyncWebAssembly: true,
-      }
-    }
-    return config
-  },
+  turbopack: {},
   async headers() {
     return [
       {
