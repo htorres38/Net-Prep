@@ -1,9 +1,11 @@
 import { neon } from '@neondatabase/serverless'
 import { NextRequest, NextResponse } from 'next/server'
 
-const sql = neon(process.env.NEON_DATABASE_URL!)
-
 export async function POST(req: NextRequest) {
+  if (!process.env.NEON_DATABASE_URL) {
+    return NextResponse.json({ error: 'NEON_DATABASE_URL not set' }, { status: 500 })
+  }
+  const sql = neon(process.env.NEON_DATABASE_URL)
   const body = await req.json()
   const { action } = body
 
@@ -42,11 +44,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+  if (!process.env.NEON_DATABASE_URL) {
+    return NextResponse.json({ ok: false, error: 'NEON_DATABASE_URL not set' }, { status: 500 })
+  }
+  const sql = neon(process.env.NEON_DATABASE_URL)
   try {
     await sql`SELECT 1`
-    return NextResponse.json({ ok: true, url: process.env.NEON_DATABASE_URL ? 'set' : 'MISSING' })
+    return NextResponse.json({ ok: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return NextResponse.json({ ok: false, error: msg, url: process.env.NEON_DATABASE_URL ? 'set' : 'MISSING' }, { status: 500 })
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 })
   }
 }
