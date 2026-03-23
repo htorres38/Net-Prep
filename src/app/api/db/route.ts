@@ -1,11 +1,16 @@
 import { neon } from '@neondatabase/serverless'
 import { NextRequest, NextResponse } from 'next/server'
 
+function getNeonClient() {
+  const url = (process.env.NEON_DATABASE_URL ?? '').replace(/[?&]channel_binding=[^&]*/g, '').replace(/\?$/, '')
+  return neon(url)
+}
+
 export async function POST(req: NextRequest) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: 'NEON_DATABASE_URL not set' }, { status: 500 })
   }
-  const sql = neon(process.env.NEON_DATABASE_URL)
+  const sql = getNeonClient()
   const body = await req.json()
   const { action } = body
 
@@ -47,7 +52,7 @@ export async function GET() {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ ok: false, error: 'NEON_DATABASE_URL not set' }, { status: 500 })
   }
-  const sql = neon(process.env.NEON_DATABASE_URL)
+  const sql = getNeonClient()
   try {
     await sql`SELECT 1`
     return NextResponse.json({ ok: true })
