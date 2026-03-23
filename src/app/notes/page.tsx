@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, FileText, Trash2, Edit3, BookOpen, Calendar } from 'lucide-react'
 import { getAllLessons } from '../../data/ccna-curriculum'
 import { syncNote, deleteNoteFromDb } from '@/lib/db'
+import { useQuery } from '@powersync/react'
 
 interface SavedNote {
   lessonId: string
@@ -22,9 +23,26 @@ export default function NotesPage() {
 
   const allLessons = getAllLessons()
 
+  // PowerSync reactive query — auto-updates when data syncs from backend
+  const { data: psNotes = [] } = useQuery<{ lesson_id: string; content: string; updated_at: string }>(
+    'SELECT lesson_id, content, updated_at FROM notes WHERE content != \'\' ORDER BY updated_at DESC'
+  )
+
   useEffect(() => {
     setIsClient(true)
   }, [])
+
+  // Use PowerSync data when available, otherwise fall back to Dexie
+  useEffect(() => {
+    if (psNotes.length > 0) {
+      const notes: SavedNote[] = psNotes.flatMap(n => {
+        const lesson = allLessons.find(l => l.id === n.lesson_id)
+        if (!lesson) return []
+        return [{ lessonId: n.lesson_id, lessonTitle: lesson.title, notes: n.content, lastUpdated: n.updated_at ?? '' }]
+      })
+      setSavedNotes(notes.sort((a, b) => a.lessonTitle.localeCompare(b.lessonTitle)))
+    }
+  }, [psNotes])
 
   useEffect(() => {
     if (isClient) {

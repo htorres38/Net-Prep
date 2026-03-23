@@ -11,7 +11,10 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     import('@/lib/powersync/db').then(async ({ createPowerSyncDb }) => {
       const powerSyncDb = await createPowerSyncDb()
-      console.log('[PowerSync] status:', powerSyncDb.currentStatus)
+      console.log('[PowerSync] initial status:', powerSyncDb.currentStatus)
+      ;(powerSyncDb as any).statusStream?.subscribe((status: any) => {
+        console.log('[PowerSync] status changed — connected:', status.connected, '| last sync:', status.lastSyncedAt ?? 'never')
+      })
       dbRef.current = powerSyncDb
       setDb(powerSyncDb)
     }).catch(console.error)
